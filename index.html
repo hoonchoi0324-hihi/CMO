@@ -1,0 +1,358 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>CMO (모바일 · 빅맵)</title>
+<style>
+  body{margin:0;background:#5c94fc;touch-action:manipulation}
+  .wrap{max-width:720px;margin:0 auto}
+  canvas{display:block;width:100%;height:auto;background:#5c94fc;image-rendering:pixelated}
+  .pad{
+    display:flex;justify-content:space-between;gap:10px;
+    padding:12px;background:rgba(255,255,255,0.65);
+    position:sticky;bottom:0;backdrop-filter:blur(6px)
+  }
+  .btn{flex:1;padding:14px 0;border-radius:14px;border:1px solid #777;background:#fff;font-size:18px}
+  .btn:active{transform:scale(0.98)}
+  .small{flex:0.8}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <canvas id="game" width="640" height="360"></canvas>
+  <div class="pad">
+    <button class="btn small" id="left">⬅️</button>
+    <button class="btn small" id="right">➡️</button>
+    <button class="btn" id="jump">⤴️ 점프</button>
+    <button class="btn small" id="restart">🔁</button>
+  </div>
+</div>
+
+<script>
+/* =========================
+   설정
+========================= */
+const c = document.getElementById("game");
+const ctx = c.getContext("2d");
+
+const VIEW_W = c.width, VIEW_H = c.height;
+
+// 물리
+const GRAVITY=0.6, SPEED=3, JUMP=-11, BOUNCE=-9;
+const GROUND_Y = 300;
+
+// 전투/라이프
+const MAX_HP=3, MAX_LIVES=3, IFRAME_MS=900;
+
+// ✅ 맵 길이(원하면 더 키워도 됨)
+const WORLD_W = 2600 * 50; // 130000 (거의 100배 느낌으로 충분히 김)
+
+// 이모지 폰트
+const EMOJI_FONT = "22px 'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif";
+
+/* =========================
+   입력(모바일)
+========================= */
+const input={left:false,right:false,jump:false};
+
+function bindHold(id,key){
+  const el=document.getElementById(id);
+  const on=(e)=>{e.preventDefault(); input[key]=true;};
+  const off=(e)=>{e.preventDefault(); input[key]=false;};
+  el.addEventListener("touchstart",on,{passive:false});
+  el.addEventListener("touchend",off,{passive:false});
+  el.addEventListener("touchcancel",off,{passive:false});
+  // PC도
+  el.addEventListener("mousedown",()=>input[key]=true);
+  addEventListener("mouseup",()=>input[key]=false);
+}
+bindHold("left","left");
+bindHold("right","right");
+document.getElementById("jump").addEventListener("touchstart",(e)=>{e.preventDefault(); input.jump=true;},{passive:false});
+document.getElementById("jump").addEventListener("mousedown",()=>input.jump=true);
+
+/* =========================
+   유틸
+========================= */
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+function aabb(a,b){return a.x<b.x+b.w && a.x+a.w>b.x && a.y<b.y+b.h && a.y+a.h>b.y;}
+function rnd(min,max){return min + Math.floor(Math.random()*(max-min+1));}
+
+/* =========================
+   월드 생성(자동)
+========================= */
+function makeEnemy(x,y,speed){
+  return {x,y,w:24,h:24,vx:speed,alive:true,homeX:x};
+}
+
+function buildPlatforms(){
+  const arr=[];
+  for(let x=180; x<WORLD_W; x+= 220 + rnd(0,260)){
+    const y = rnd(210, 280);
+    const w = rnd(60, 160);
+    arr.push({x, y, w, h:10});
+  }
+  return arr;
+}
+
+function buildEnemies(){
+  const arr=[];
+  for(let x=400; x<WORLD_W; x+= 600 + rnd(0,700)){
+    arr.push(makeEnemy(x, GROUND_Y-24, (Math.random()<0.5?-1:1) * (0.9 + Math.random()*0.8)));
+  }
+  return arr;
+}
+
+function buildCoins(){
+  const arr=[];
+  for(let x=120; x<WORLD_W; x+= 70){
+    if(Math.random()<0.55){
+      arr.push({x, y:rnd(140, 260), r:6, got:false});
+    }
+  }
+  return arr;
+}
+
+/* =========================
+   게임 상태
+========================= */
+let platforms = buildPlatforms();
+let enemies   = buildEnemies();
+let coins     = buildCoins();
+
+let cat, hp, lives, score, gameOver, iFrameUntil, camX;
+
+function reset(){
+  cat = {x:60,y:GROUND_Y-24,w:24,h:24,vx:0,vy:0,onGround:false};
+  hp = MAX_HP; lives = MAX_LIVES; score=0;
+  gameOver=false; iFrameUntil=0;
+  camX = 0;
+
+  // 적/코인 리셋
+  enemies.forEach(e=>{
+    e.alive=true;
+    e.x=e.homeX;
+    e.vx = (Math.random()<0.5?-1:1) * (0.9 + Math.random()*0.8);
+  });
+  coins.forEach(k=>k.got=false);
+}
+
+function respawn(){
+  cat.x=60; cat.y=GROUND_Y-24; cat.vx=0; cat.vy=0; cat.onGround=false;
+  hp=MAX_HP;
+  iFrameUntil=performance.now()+IFRAME_MS;
+}
+
+document.getElementById("restart").onclick=reset;
+
+/* =========================
+   충돌(바닥 + 발판)
+========================= */
+function resolvePlatforms(){
+  cat.onGround=false;
+
+  // 바닥
+  if(cat.y + cat.h >= GROUND_Y){
+    cat.y = GROUND_Y - cat.h;
+    cat.vy = 0;
+    cat.onGround = true;
+  }
+
+  // 발판(위에서 착지)
+  for(const p of platforms){
+    const falling = cat.vy >= 0;
+    const prevBottom = (cat.y + cat.h) - cat.vy;
+    const nowBottom  = cat.y + cat.h;
+
+    if(falling &&
+       cat.x + cat.w > p.x && cat.x < p.x + p.w &&
+       prevBottom <= p.y && nowBottom >= p.y &&
+       cat.y < p.y){
+      cat.y = p.y - cat.h;
+      cat.vy = 0;
+      cat.onGround = true;
+    }
+  }
+}
+
+/* =========================
+   업데이트
+========================= */
+function update(){
+  if(gameOver) return;
+
+  // 입력
+  cat.vx=0;
+  if(input.left)  cat.vx=-SPEED;
+  if(input.right) cat.vx= SPEED;
+
+  if(input.jump && cat.onGround){
+    cat.vy=JUMP;
+    cat.onGround=false;
+  }
+  input.jump=false;
+
+  // 물리
+  cat.vy += GRAVITY;
+  cat.x  += cat.vx;
+  cat.y  += cat.vy;
+
+  // 월드 경계
+  cat.x = clamp(cat.x, 0, WORLD_W - cat.w);
+
+  // 충돌
+  resolvePlatforms();
+
+  // 카메라
+  const target = cat.x - VIEW_W*0.35;
+  camX = clamp(target, 0, WORLD_W - VIEW_W);
+
+  // 적 이동(자기 영역 왕복)
+  for(const e of enemies){
+    if(!e.alive) continue;
+    e.x += e.vx;
+    if(e.x <= e.homeX-70){ e.x=e.homeX-70; e.vx*=-1; }
+    if(e.x >= e.homeX+70){ e.x=e.homeX+70; e.vx*=-1; }
+  }
+
+  // 코인 줍기
+  for(const k of coins){
+    if(k.got) continue;
+    const dx = (cat.x+cat.w/2) - k.x;
+    const dy = (cat.y+cat.h/2) - k.y;
+    if(dx*dx + dy*dy < 18*18){
+      k.got=true;
+      score += 10;
+    }
+  }
+
+  // 적 충돌
+  const now = performance.now();
+  const inv = now < iFrameUntil;
+
+  for(const e of enemies){
+    if(!e.alive) continue;
+    if(!aabb(cat,e)) continue;
+
+    const catBottom = cat.y + cat.h;
+    const stomp = (cat.vy > 0) && (catBottom - cat.vy <= e.y + 4);
+
+    if(stomp){
+      e.alive=false;
+      score += 100;
+      cat.vy = BOUNCE;
+      cat.onGround=false;
+    }else{
+      if(!inv){
+        hp -= 1;
+        iFrameUntil = now + IFRAME_MS;
+        cat.vy = -6;
+        cat.x += (cat.x < e.x ? -18 : 18);
+        cat.x = clamp(cat.x, 0, WORLD_W - cat.w);
+
+        if(hp<=0){
+          lives -= 1;
+          if(lives<=0) gameOver=true;
+          else respawn();
+        }
+      }
+    }
+  }
+
+  // 낙사
+  if(cat.y > VIEW_H + 120){
+    lives -= 1;
+    if(lives<=0) gameOver=true;
+    else respawn();
+  }
+}
+
+/* =========================
+   그리기
+========================= */
+function draw(){
+  // 하늘
+  ctx.fillStyle="#5c94fc";
+  ctx.fillRect(0,0,VIEW_W,VIEW_H);
+
+  // 땅
+  ctx.fillStyle="#6b8e23";
+  ctx.fillRect(0, GROUND_Y, VIEW_W, VIEW_H-GROUND_Y);
+
+  // 발판
+  ctx.fillStyle="#b5651d";
+  for(const p of platforms){
+    const sx = p.x - camX;
+    if(sx+p.w<0 || sx>VIEW_W) continue;
+    ctx.fillRect(sx, p.y, p.w, p.h);
+  }
+
+  // 코인(✨)
+  ctx.font = "18px sans-serif";
+  for(const k of coins){
+    if(k.got) continue;
+    const sx = k.x - camX;
+    if(sx< -20 || sx>VIEW_W+20) continue;
+    ctx.fillText("🟡", sx-8, k.y+6);
+  }
+
+  // 적 😾
+  ctx.font = EMOJI_FONT;
+  for(const e of enemies){
+    if(!e.alive) continue;
+    const sx = e.x - camX;
+    if(sx+e.w<0 || sx>VIEW_W) continue;
+    ctx.fillText("🐶", sx-2, e.y+20);
+  }
+
+  // 플레이어 😺 (무적 깜빡임)
+  const now = performance.now();
+  const blink = (now < iFrameUntil) && (Math.floor(now/90)%2===0);
+  if(!blink){
+    const sx = cat.x - camX;
+    ctx.font = EMOJI_FONT;
+    ctx.fillText("😺", sx-2, cat.y+20);
+  }
+
+  // UI
+  ctx.fillStyle="#fff";
+  ctx.font="14px monospace";
+  ctx.fillText("CMO · 빅맵", 10, 20);
+  ctx.fillText(`SCORE: ${score}`, 10, 40);
+  ctx.fillText(`HP: ${"♥".repeat(hp)}${"♡".repeat(MAX_HP-hp)}`, 10, 60);
+  ctx.fillText(`LIVES: ${lives}`, 10, 80);
+  ctx.fillText(`MAP: ${Math.floor(cat.x)}/${WORLD_W}`, 10, 100);
+  ctx.fillText("모델 L.1.0", 10, 120);
+  ctx.fillText("적: 강아지", 10, 140); 
+    
+  if(cat.x > WORLD_W - 120 && !gameOver){
+    ctx.fillText("🏁 거의 끝!", 470, 40);
+  }
+
+  if(gameOver){
+    ctx.fillStyle="#000"; ctx.globalAlpha=0.35;
+    ctx.fillRect(0,0,VIEW_W,VIEW_H);
+    ctx.globalAlpha=1;
+    ctx.fillStyle="#fff";
+    ctx.font="26px monospace";
+    ctx.fillText("GAME OVER", 220, 170);
+    ctx.font="16px monospace";
+    ctx.fillText("아래 🔁 눌러 재시작", 225, 200);
+  }
+}
+
+/* =========================
+   루프
+========================= */
+function loop(){
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+
+reset();
+loop();
+</script>
+</body>
+</html>

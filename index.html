@@ -3,17 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-
-  cmo.png   (512x512 권장)
-
-<link rel="icon" href="cmo.png">
-
-<meta property="og:title" content="CMO L.1.0">
-<meta property="og:description" content="픽셀 고양이 횡스크롤 게임">
-<meta property="og:image" content="https://hoonchoi0324-hihi.github.io/CMO/cmo.png">
-<meta property="og:url" content="https://hoonchoi0324-hihi.github.io/CMO/">
- 
-  <title>CMO (모바일 · 빅맵)</title>
+<title>😺 고양이 마리오 (모바일 · 빅맵)</title>
 <style>
   body{margin:0;background:#5c94fc;touch-action:manipulation}
   .wrap{max-width:720px;margin:0 auto}
@@ -74,19 +64,6 @@ function bindHold(id,key){
   el.addEventListener("touchend",off,{passive:false});
   el.addEventListener("touchcancel",off,{passive:false});
   // PC도
-  // 키보드 WASD 지원
-addEventListener("keydown", (e) => {
-  if (e.repeat) return;
-  if (e.key === "a" || e.key === "A") input.left = true;
-  if (e.key === "d" || e.key === "D") input.right = true;
-  if (e.key === "w" || e.key === "W" || e.key === " ") input.jump = true;
-});
-
-addEventListener("keyup", (e) => {
-  if (e.key === "a" || e.key === "A") input.left = false;
-  if (e.key === "d" || e.key === "D") input.right = false;
-  if (e.key === "w" || e.key === "W" || e.key === " ") input.jump = false;
-});
   el.addEventListener("mousedown",()=>input[key]=true);
   addEventListener("mouseup",()=>input[key]=false);
 }
@@ -280,6 +257,17 @@ function update(){
           else respawn();
         }
       }
+    }
+  }
+
+  // 낙사
+  if(cat.y > VIEW_H + 120){
+    lives -= 1;
+    if(lives<=0) gameOver=true;
+    else respawn();
+  }
+}
+
 /* =========================
    그리기
 ========================= */
@@ -300,7 +288,7 @@ function draw(){
     ctx.fillRect(sx, p.y, p.w, p.h);
   }
 
-  // 코인(🟡)
+  // 코인(✨)
   ctx.font = "18px sans-serif";
   for(const k of coins){
     if(k.got) continue;
@@ -309,13 +297,13 @@ function draw(){
     ctx.fillText("🟡", sx-8, k.y+6);
   }
 
-  // 적 🐶
+  // 적 😾
   ctx.font = EMOJI_FONT;
   for(const e of enemies){
     if(!e.alive) continue;
     const sx = e.x - camX;
     if(sx+e.w<0 || sx>VIEW_W) continue;
-    ctx.fillText("🐶", sx-2, e.y+20);
+    ctx.fillText("🧟", sx-2, e.y+20);
   }
 
   // 플레이어 😺 (무적 깜빡임)
@@ -324,22 +312,20 @@ function draw(){
   if(!blink){
     const sx = cat.x - camX;
     ctx.font = EMOJI_FONT;
-    ctx.fillText("😸", sx-2, cat.y+20);
+    ctx.fillText("😺", sx-2, cat.y+20);
   }
 
   // UI
   ctx.fillStyle="#fff";
   ctx.font="14px monospace";
-  ctx.fillText("CMO · L.1.0", 20, 20);
+  ctx.fillText("😺 고양이 마리오 · 빅맵", 10, 20);
   ctx.fillText(`SCORE: ${score}`, 10, 40);
   ctx.fillText(`HP: ${"♥".repeat(hp)}${"♡".repeat(MAX_HP-hp)}`, 10, 60);
   ctx.fillText(`LIVES: ${lives}`, 10, 80);
   ctx.fillText(`MAP: ${Math.floor(cat.x)}/${WORLD_W}`, 10, 100);
-  ctx.fillText("모델 L.1.0", 10, 120);
-  ctx.fillText("적: 강아지", 10, 140); 
-    
+
   if(cat.x > WORLD_W - 120 && !gameOver){
-    ctx.fillText("what? why can't bi aut", 470, 40);
+    ctx.fillText("🏁 거의 끝!", 470, 40);
   }
 
   if(gameOver){

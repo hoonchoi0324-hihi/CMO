@@ -294,7 +294,7 @@ function draw(){
     if(k.got) continue;
     const sx = k.x - camX;
     if(sx< -20 || sx>VIEW_W+20) continue;
-    ctx.fillText("✨", sx-8, k.y+6);
+    ctx.fillText("🟡", sx-8, k.y+6);
   }
 
   // 적 😾
@@ -303,7 +303,7 @@ function draw(){
     if(!e.alive) continue;
     const sx = e.x - camX;
     if(sx+e.w<0 || sx>VIEW_W) continue;
-    ctx.fillText("😾", sx-2, e.y+20);
+    ctx.fillText("🐶", sx-2, e.y+20);
   }
 
   // 플레이어 😺 (무적 깜빡임)
@@ -319,10 +319,10 @@ function draw(){
   ctx.fillStyle="#fff";
   ctx.font="14px monospace";
   ctx.fillText("😺 고양이 마리오 · 빅맵", 10, 20);
-  ctx.fillText(SCORE: ${score}, 10, 40);
-  ctx.fillText(HP: ${"♥".repeat(hp)}${"♡".repeat(MAX_HP-hp)}, 10, 60);
-  ctx.fillText(LIVES: ${lives}, 10, 80);
-  ctx.fillText(MAP: ${Math.floor(cat.x)}/${WORLD_W}, 10, 100);
+  ctx.fillText(`SCORE: ${score}`, 10, 40);
+  ctx.fillText(`HP: ${"♥".repeat(hp)}${"♡".repeat(MAX_HP-hp)}`, 10, 60);
+  ctx.fillText(`LIVES: ${lives}`, 10, 80);
+  ctx.fillText(`MAP: ${Math.floor(cat.x)}/${WORLD_W}`, 10, 100);
 
   if(cat.x > WORLD_W - 120 && !gameOver){
     ctx.fillText("🏁 거의 끝!", 470, 40);

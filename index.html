@@ -280,17 +280,6 @@ function update(){
           else respawn();
         }
       }
-    }
-  }
-
-  // 낙사
-  if(cat.y > VIEW_H + 120){
-    lives -= 1;
-    if(lives<=0) gameOver=true;
-    else respawn();
-  }
-}
-
 /* =========================
    그리기
 ========================= */
